@@ -1,0 +1,55 @@
+{
+  "index_name": "sorosim",
+  "start_urls": [
+    {
+      "url": "https://docs.sorosim.dev/docs/",
+      "selectors_key": "docs",
+      "tags": ["docs"]
+    },
+    {
+      "url": "https://docs.sorosim.dev/blog/",
+      "selectors_key": "blog",
+      "tags": ["blog"]
+    }
+  ],
+  "sitemap_urls": [
+    "https://docs.sorosim.dev/sitemap.xml"
+  ],
+  "sitemap_alternate_links": true,
+  "stop_urls": [
+    "/tests"
+  ],
+  "selectors": {
+    "docs": {
+      "lvl0": {
+        "selector": "(//ul[contains(@class,'menu__list')]//a[contains(@class, 'menu__link menu__link--sublist menu__link--active')]/text() | //nav[contains(@class, 'navbar')]//a[contains(@class, 'navbar__link--active')]/text())[last()]",
+        "type": "xpath",
+        "global": true,
+        "default_value": "Documentation"
+      },
+      "lvl1": "article h1",
+      "lvl2": "article h2",
+      "lvl3": "article h3",
+      "lvl4": "article h4",
+      "lvl5": "article h5, article td:first-child",
+      "lvl6": "article h6",
+      "text": "article p, article li, article td:last-child"
+    },
+    "blog": {
+      "lvl0": {
+        "selector": "",
+        "default_value": "Blog"
+      },
+      "lvl1": "article h1",
+      "lvl2": "article h2",
+      "lvl3": "article h3",
+      "lvl4": "article h4",
+      "lvl5": "article h5",
+      "text": "article p, article li"
+    }
+  },
+  "conversation_id": [
+    "123456789"
+  ],
+  "nb_hits": 46250
+}
