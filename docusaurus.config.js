@@ -13,7 +13,7 @@ const config = {
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://your-docusaurus-site.example.com',
+  url: 'https://docs.sorosim.dev',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: '/',
@@ -33,6 +33,59 @@ const config = {
     defaultLocale: 'en',
     locales: ['en'],
   },
+
+  // Head tags for SEO and social sharing
+  headTags: [
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'keywords',
+        content: 'soroban, stellar, smart contracts, blockchain, testing, simulation, development tools, sorosim',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'author',
+        content: 'SoroSim Team',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'twitter:card',
+        content: 'summary_large_image',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'twitter:site',
+        content: '@SoroSim',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'twitter:creator',
+        content: '@SoroSim',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        property: 'og:type',
+        content: 'website',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        property: 'og:site_name',
+        content: 'SoroSim Documentation',
+      },
+    },
+  ],
 
   presets: [
     [
@@ -63,8 +116,55 @@ const config = {
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
-      // Replace with your project's social card
+      // Social card for sharing
       image: 'img/sorosim-social-card.jpg',
+      // Metadata for SEO
+      metadata: [
+        {
+          name: 'description',
+          content: 'SoroSim is an open-source Soroban contract simulation tool with visual state inspection. Test smart contracts locally without testnet.',
+        },
+        {
+          name: 'og:title',
+          content: 'SoroSim - Soroban Contract Simulation & Testing Tool',
+        },
+        {
+          name: 'og:description',
+          content: 'Open-source browser and CLI tool for simulating Soroban smart contracts with visual state inspection. No testnet required.',
+        },
+        {
+          name: 'og:image',
+          content: 'https://docs.sorosim.dev/img/sorosim-social-card.jpg',
+        },
+        {
+          name: 'og:image:alt',
+          content: 'SoroSim - Soroban Contract Simulation Tool',
+        },
+        {
+          name: 'og:image:width',
+          content: '1200',
+        },
+        {
+          name: 'og:image:height',
+          content: '630',
+        },
+        {
+          name: 'twitter:title',
+          content: 'SoroSim - Soroban Contract Simulation Tool',
+        },
+        {
+          name: 'twitter:description',
+          content: 'Open-source tool for simulating Soroban contracts locally with visual state inspection.',
+        },
+        {
+          name: 'twitter:image',
+          content: 'https://docs.sorosim.dev/img/sorosim-social-card.jpg',
+        },
+        {
+          name: 'twitter:image:alt',
+          content: 'SoroSim - Soroban Contract Simulation Tool',
+        },
+      ],
       // Algolia DocSearch configuration
       algolia: {
         // The application ID provided by Algolia
