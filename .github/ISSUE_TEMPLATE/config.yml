@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discord Community
+    url: https://discord.gg/stellar
+    about: Join our Discord server for questions, discussions, and community support
+  - name: 📖 Documentation
+    url: https://docs.sorosim.dev
+    about: Read the documentation for guides, tutorials, and API reference
+  - name: 💡 GitHub Discussions
+    url: https://github.com/sorosim/sorosim/discussions
+    about: Ask questions, share ideas, and discuss SoroSim development
+  - name: 🆘 Get Help
+    url: https://docs.sorosim.dev/docs/faq
+    about: Check the FAQ for common issues and solutions
