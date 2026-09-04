@@ -1,7 +1,7 @@
 ---
 slug: introducing-sorosim
 title: Introducing SoroSim - The Missing Soroban Development Tool
-authors: [sorosim-team]
+authors: sorosim-team
 tags: [launch, soroban, stellar, smart-contracts, development-tools]
 ---
 
