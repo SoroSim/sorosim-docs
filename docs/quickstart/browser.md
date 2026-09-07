@@ -129,6 +129,264 @@ address: GABC...XYZ (Stellar address or contract ID)
 }
 ```
 
+---
+
+## Code Examples: Common Browser Operations
+
+### Example 1: Token Contract Deployment and Initialization
+
+This example demonstrates uploading a token contract and initializing it with admin credentials.
+
+**Step 1: Upload the WASM**
+- Click **"Upload Contract"** and select your `token.wasm` file
+- Name it: `my_token`
+- Click **"Load Contract"**
+
+**Step 2: Initialize the Token**
+
+Select the `initialize` function and provide these parameters:
+
+```json
+{
+  "admin": {
+    "type": "Address",
+    "value": "GADMIN5Y7ZQFWKJQXJXJXJXJXJXJXJXJXJXJXJXJXJXJXJXJXJXJX"
+  },
+  "name": {
+    "type": "String",
+    "value": "MyToken"
+  },
+  "symbol": {
+    "type": "String",
+    "value": "MYTK"
+  },
+  "decimals": {
+    "type": "U32",
+    "value": 7
+  }
+}
+```
+
+**Expected Output:**
+
+```
+✓ Invocation Successful
+
+Return Value: Void
+
+Events:
+  1. Topic: [Symbol("initialize")]
+     Data: [String("MyToken"), String("MYTK"), U32(7)]
+
+CPU Usage: 15,420 instructions
+Memory: 2.3 KB
+
+State Changes:
++ ContractData: TokenName
+  Added: String("MyToken")
+
++ ContractData: TokenSymbol
+  Added: String("MYTK")
+
++ ContractData: Decimals
+  Added: U32(7)
+
++ ContractData: Admin
+  Added: Address("GADMIN5Y7...")
+```
+
+### Example 2: Token Minting and Balance Check
+
+This example shows how to mint tokens and verify the balance.
+
+**Step 1: Mint Tokens**
+
+With authorization configured (add admin address in the Auth panel), select the `mint` function:
+
+```json
+{
+  "to": {
+    "type": "Address",
+    "value": "GUSER2ABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJK"
+  },
+  "amount": {
+    "type": "I128",
+    "value": "1000000000"
+  }
+}
+```
+
+**Auth Configuration (in Auth Panel):**
+```json
+{
+  "address": "GADMIN5Y7ZQFWKJQXJXJXJXJXJXJXJXJXJXJXJXJXJXJXJXJXJXJX",
+  "credentials": {
+    "type": "SourceAccount"
+  }
+}
+```
+
+**Expected Output:**
+
+```
+✓ Invocation Successful
+
+Return Value: Void
+
+Events:
+  1. Topic: [Symbol("mint"), Address("GUSER2ABC...")]
+     Data: [Address("GUSER2ABC..."), I128(1000000000)]
+
+CPU Usage: 18,650 instructions
+Memory: 3.1 KB
+
+State Changes:
++ ContractData: Balance(GUSER2ABC...)
+  Added: I128(1000000000)
+
+~ ContractData: TotalSupply
+  Before: I128(0)
+  After: I128(1000000000)
+```
+
+**Step 2: Check Balance**
+
+Select the `balance` function:
+
+```json
+{
+  "id": {
+    "type": "Address",
+    "value": "GUSER2ABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJK"
+  }
+}
+```
+
+**Expected Output:**
+
+```
+✓ Invocation Successful
+
+Return Value: I128(1000000000)
+
+CPU Usage: 8,200 instructions
+Memory: 1.2 KB
+
+Footprint:
+Read-Only Entries:
+  • ContractData: Balance(GUSER2ABC...)
+```
+
+### Example 3: Cross-Contract Call with State Inspection
+
+This example demonstrates calling one contract from another and inspecting the resulting state changes.
+
+**Prerequisites:**
+- Upload two contracts: `caller.wasm` (name: `caller`) and `callee.wasm` (name: `callee`)
+- Deploy the callee contract and note its contract ID: `CCALLEE7XYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZ`
+
+**Step 1: Configure Ledger with Deployed Contract**
+
+Add this ledger entry to register the callee contract:
+
+```json
+{
+  "type": "ContractCode",
+  "hash": "a1b2c3d4e5f6789...",
+  "wasm": "callee.wasm"
+}
+```
+
+**Step 2: Invoke Cross-Contract Function**
+
+In the `caller` contract, select the `invoke_callee` function:
+
+```json
+{
+  "callee_id": {
+    "type": "Address",
+    "value": "CCALLEE7XYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZXYZ"
+  },
+  "method": {
+    "type": "Symbol",
+    "value": "increment"
+  },
+  "args": {
+    "type": "Vec",
+    "value": [
+      {"type": "U32", "value": 5}
+    ]
+  }
+}
+```
+
+**Expected Output:**
+
+```
+✓ Invocation Successful
+
+Return Value: U32(5)
+
+Events:
+  1. Topic: [Symbol("cross_call"), Address("CCALLEE7...")]
+     Data: [Symbol("increment"), U32(5)]
+  
+  2. Topic: [Symbol("increment_called")]
+     Data: [U32(0), U32(5)]
+     Contract: CCALLEE7...
+
+CPU Usage: 24,800 instructions
+Memory: 4.7 KB
+
+State Changes (Multi-Contract):
+
+caller Contract:
+  + ContractData: LastCallResult
+    Added: U32(5)
+
+callee Contract:
+  ~ ContractData: Counter
+    Before: U32(0)
+    After: U32(5)
+
+Footprint:
+Read-Write Entries:
+  • ContractData: Counter (callee)
+  • ContractData: LastCallResult (caller)
+
+Read-Only Entries:
+  • ContractCode: CCALLEE7...
+```
+
+**State Inspector View:**
+
+The State Inspector tab shows a detailed comparison:
+
+```diff
+Contract: caller (CCALLER...)
+==================================
++ ContractData: LastCallResult
+  Type: U32
+  Value: 5
+  Durability: Temporary
+  Cost: ~12 stroops
+
+Contract: callee (CCALLEE7...)
+==================================
+~ ContractData: Counter
+  - Before: U32(0)
+  + After:  U32(5)
+  Type: U32
+  Durability: Persistent
+  Cost: ~45 stroops
+```
+
+:::tip Pro Tip
+Use the **"Export State"** button to save the final state as a JSON file. You can then use it as the initial state for subsequent test scenarios or in CI/CD pipelines with the [SoroSim CLI](/docs/quickstart/cli).
+:::
+
+---
+
 ## Step 5: Inspect the Results
 
 After simulation completes, the right panel displays:
