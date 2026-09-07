@@ -1309,6 +1309,473 @@ type %USERPROFILE%\.sorosim\logs\cli.log
 
 ---
 
+## Debugging Failed Simulations
+
+This section provides advanced techniques for investigating why simulations fail and how to recover from common issues.
+
+### Understanding Simulation Failures
+
+When a simulation fails, SoroSim provides several types of diagnostic information:
+
+#### 1. Contract Panics vs. Host Errors
+
+**Contract Panic:**
+```bash
+Simulation failed: Contract panicked
+
+Panic: "insufficient balance"
+Location: src/token.rs:145
+
+This is a contract-level error thrown by your code.
+Review the contract logic at the specified location.
+```
+
+**Host Error:**
+```bash
+Simulation failed: Host error
+
+Error: InvalidAction
+Code: Host(AuthorizationNotFound)
+
+This is a Soroban host environment error.
+The contract tried to perform an action that requires authorization,
+but no valid auth context was provided.
+```
+
+**How to Debug:**
+
+```bash
+# For contract panics: Review your contract code
+# Add more specific error messages in your contract
+
+// Before
+panic!("error");
+
+// After
+panic!("insufficient balance: required {}, available {}", required, available);
+
+# For host errors: Check your simulation setup
+sorosim simulate \
+  --verbose \
+  --wasm contract.wasm \
+  --function test \
+  --auth-file auth.json \
+  --ledger ledger.json
+```
+
+#### 2. Tracing Execution Flow
+
+**Enable Maximum Verbosity:**
+```bash
+# See every host function call
+sorosim simulate \
+  --verbose \
+  --wasm contract.wasm \
+  --function complex_operation \
+  --args '[...]' 2>&1 | tee execution-trace.log
+
+# Analyze the trace
+grep "host_function_call" execution-trace.log
+grep "ledger_entry_read" execution-trace.log
+grep "ledger_entry_write" execution-trace.log
+```
+
+**Example Trace Output:**
+```
+[TRACE] host_function_call: get_ledger_entry
+[TRACE] ledger_entry_read: ContractData Balance(GUSER...)
+[TRACE] entry_found: true
+[TRACE] host_function_call: get_current_contract_address
+[TRACE] host_function_call: call_contract
+[TRACE] contract_call: COTHER...XYZ -> function: transfer
+[TRACE] ledger_entry_write: ContractData Balance(GUSER...) = I128(500)
+[TRACE] simulation_complete: success
+```
+
+#### 3. Footprint Mismatches
+
+**Error Message:**
+```bash
+Simulation failed: Footprint mismatch
+
+Entry accessed but not in footprint:
+  Type: ContractData
+  Contract: CTOKEN...ABC
+  Key: Balance(GUSER...XYZ)
+  
+Access: Read
+Declared in footprint: No
+```
+
+**Cause:** Contract accessed ledger entries not declared in the footprint (common in cross-contract calls).
+
+**Solution:**
+
+```bash
+# First, run simulation to discover required entries
+sorosim simulate \
+  --verbose \
+  --wasm contract.wasm \
+  --function test \
+  --args '[...]' 2>&1 | grep "ledger_entry"
+
+# Then add all accessed entries to ledger config
+cat > ledger.json << 'EOF'
+{
+  "entries": [
+    {
+      "type": "ContractData",
+      "contract": "CTOKEN...ABC",
+      "key": {
+        "type": "Vec",
+        "value": [
+          {"type": "Symbol", "value": "Balance"},
+          {"type": "Address", "value": "GUSER...XYZ"}
+        ]
+      },
+      "value": {"type": "I128", "value": "1000"},
+      "durability": "Persistent"
+    }
+  ]
+}
+EOF
+
+# Re-run simulation
+sorosim simulate \
+  --wasm contract.wasm \
+  --function test \
+  --ledger ledger.json \
+  --args '[...]'
+```
+
+### Recovery Strategies
+
+#### Strategy 1: Incremental State Building
+
+Build complex state incrementally by chaining simulations:
+
+```bash
+#!/bin/bash
+# build-state.sh - Build contract state step by step
+
+echo "Step 1: Initialize contract"
+sorosim simulate \
+  --wasm token.wasm \
+  --function initialize \
+  --args '[{"type":"Address","value":"GADMIN..."}]' \
+  --save-state state-01-initialized.json
+
+echo "Step 2: Mint initial supply"
+sorosim simulate \
+  --wasm token.wasm \
+  --function mint \
+  --ledger state-01-initialized.json \
+  --auth-file admin-auth.json \
+  --args '[{"type":"Address","value":"GUSER..."},{"type":"I128","value":"1000000"}]' \
+  --save-state state-02-minted.json
+
+echo "Step 3: Create allowance"
+sorosim simulate \
+  --wasm token.wasm \
+  --function approve \
+  --ledger state-02-minted.json \
+  --auth-file user-auth.json \
+  --args '[{"type":"Address","value":"GSPENDER..."},{"type":"I128","value":"500"}]' \
+  --save-state state-03-approved.json
+
+echo "State built successfully!"
+echo "Final state: state-03-approved.json"
+```
+
+#### Strategy 2: Snapshot and Replay
+
+Use snapshots to reproduce failures:
+
+```bash
+# Capture successful state before failure
+sorosim simulate \
+  --wasm contract.wasm \
+  --function working_function \
+  --ledger initial.json \
+  --save-session before-failure.sorosim
+
+# Try failing operation
+sorosim simulate \
+  --wasm contract.wasm \
+  --function failing_function \
+  --ledger before-failure.sorosim \
+  --save-session failure-captured.sorosim
+
+# Replay the entire sequence
+sorosim replay failure-captured.sorosim --verbose
+
+# Extract the exact state before failure
+sorosim extract failure-captured.sorosim \
+  --ledger-only \
+  --output state-before-failure.json
+
+# Debug with extracted state
+sorosim simulate \
+  --wasm contract.wasm \
+  --function failing_function \
+  --ledger state-before-failure.json \
+  --verbose
+```
+
+#### Strategy 3: Bisect to Find Breaking Change
+
+Use binary search to find which argument or state change causes failure:
+
+```bash
+#!/bin/bash
+# bisect-failure.sh - Find the breaking point
+
+# Test with different amounts
+for amount in 100 500 1000 5000 10000 50000; do
+  echo "Testing with amount: $amount"
+  
+  result=$(sorosim simulate \
+    --wasm token.wasm \
+    --function transfer \
+    --ledger state.json \
+    --args "[{\"type\":\"Address\",\"value\":\"GUSER...\"},\
+             {\"type\":\"I128\",\"value\":\"$amount\"}]" \
+    --output json 2>&1)
+  
+  if echo "$result" | grep -q "success"; then
+    echo "✓ $amount: Success"
+  else
+    echo "✗ $amount: Failed"
+    echo "$result" | jq '.error'
+  fi
+done
+```
+
+#### Strategy 4: Diff States to Find Issues
+
+Compare working vs. broken state:
+
+```bash
+# Save working state
+sorosim simulate \
+  --wasm contract.wasm \
+  --function working_scenario \
+  --save-state working-state.json
+
+# Save broken state
+sorosim simulate \
+  --wasm contract.wasm \
+  --function broken_scenario \
+  --save-state broken-state.json
+
+# Compare the states
+sorosim diff working-state.json broken-state.json --ledger-only
+
+# Manual inspection
+diff <(cat working-state.json | jq -S .) <(cat broken-state.json | jq -S .)
+```
+
+### Common Failure Patterns
+
+#### Pattern 1: Missing Authorization
+
+**Symptom:**
+```
+Error: Host(AuthorizationNotFound)
+```
+
+**Investigation:**
+```bash
+# Check which address the contract expects
+sorosim inspect --wasm contract.wasm | grep -A 5 "require_auth"
+
+# Add auth context for that address
+cat > auth.json << 'EOF'
+{
+  "address": "GEXPECTED_AUTH_ADDRESS...",
+  "credentials": {
+    "type": "SourceAccount"
+  }
+}
+EOF
+
+# Retry with auth
+sorosim simulate \
+  --wasm contract.wasm \
+  --function protected_function \
+  --auth-file auth.json \
+  --args '[...]'
+```
+
+#### Pattern 2: Cross-Contract Call Failures
+
+**Symptom:**
+```
+Error: Contract(InvokedContractDoesNotExist)
+```
+
+**Investigation:**
+```bash
+# The contract tried to call another contract that doesn't exist
+# in the simulation ledger
+
+# Find which contract ID is being called
+sorosim simulate --verbose \
+  --wasm caller.wasm \
+  --function call_other \
+  --args '[...]' 2>&1 | grep "call_contract"
+
+# Output: call_contract: CCALLEE...XYZ -> function: transfer
+
+# Add the callee contract to simulation
+sorosim simulate \
+  --wasm caller.wasm \
+  --function call_other \
+  --contracts '{"callee":"CCALLEE...XYZ"}' \
+  --contract-wasms '{"CCALLEE...XYZ":"callee.wasm"}' \
+  --args '[{"type":"Address","value":"CCALLEE...XYZ"}]'
+```
+
+#### Pattern 3: Type Conversion Errors
+
+**Symptom:**
+```
+Error: Contract error
+Message: "expected U32, got I32"
+```
+
+**Investigation:**
+```bash
+# Inspect function signature
+sorosim inspect --wasm contract.wasm --functions-only
+
+# Output shows:
+#   transfer(from: Address, to: Address, amount: I128) → Void
+#              ^^^^^^^^^^^  ^^^^^^^^  ^^^^^^^^^^^ 
+
+# You passed U128 instead of I128
+# Fix: Change "type":"U128" to "type":"I128"
+
+# Before (wrong):
+sorosim simulate \
+  --wasm contract.wasm \
+  --function transfer \
+  --args '[{...},{...},{"type":"U128","value":"1000"}]'
+
+# After (correct):
+sorosim simulate \
+  --wasm contract.wasm \
+  --function transfer \
+  --args '[{...},{...},{"type":"I128","value":"1000"}]'
+```
+
+### Performance Debugging
+
+#### Identify Expensive Operations
+
+```bash
+# Run with JSON output to get detailed metrics
+sorosim simulate \
+  --wasm contract.wasm \
+  --function expensive_op \
+  --output json > metrics.json
+
+# Analyze CPU usage
+cat metrics.json | jq '.cpuInstructions'
+
+# Compare multiple functions
+for func in initialize mint transfer burn; do
+  cpu=$(sorosim simulate \
+    --wasm token.wasm \
+    --function $func \
+    --args '[...]' \
+    --output json | jq '.cpuInstructions')
+  echo "$func: $cpu instructions"
+done | sort -t: -k2 -n
+```
+
+#### Memory Profiling
+
+```bash
+# Check memory usage
+sorosim simulate \
+  --wasm contract.wasm \
+  --function memory_intensive \
+  --output json | jq '{memory: .memoryBytes, cpuInsns: .cpuInstructions}'
+
+# Output:
+# {
+#   "memory": 8589934592,
+#   "cpuInsns": 45000000
+# }
+```
+
+### CI/CD Debugging
+
+When simulations fail in CI pipelines:
+
+```bash
+# Save full simulation context
+sorosim simulate \
+  --wasm contract.wasm \
+  --function test \
+  --verbose \
+  --output json \
+  --save-session ci-failure.sorosim > ci-output.json 2>&1
+
+# Upload as CI artifact
+# (GitHub Actions example)
+# - uses: actions/upload-artifact@v3
+#   with:
+#     name: simulation-failure
+#     path: |
+#       ci-output.json
+#       ci-failure.sorosim
+
+# Download locally and replay
+sorosim replay ci-failure.sorosim --verbose
+```
+
+### Getting Help
+
+When you're stuck, gather this information for support:
+
+```bash
+#!/bin/bash
+# gather-debug-info.sh - Collect debug information
+
+echo "=== SoroSim CLI Version ===" > debug-info.txt
+sorosim --version >> debug-info.txt
+
+echo -e "\n=== Node Version ===" >> debug-info.txt
+node --version >> debug-info.txt
+
+echo -e "\n=== WASM Inspection ===" >> debug-info.txt
+sorosim inspect --wasm contract.wasm >> debug-info.txt
+
+echo -e "\n=== Failed Simulation ===" >> debug-info.txt
+sorosim simulate \
+  --wasm contract.wasm \
+  --function failing_function \
+  --args '[...]' \
+  --verbose \
+  --output json >> debug-info.txt 2>&1
+
+echo -e "\n=== Environment ===" >> debug-info.txt
+env | grep SOROSIM >> debug-info.txt
+
+echo "Debug info saved to: debug-info.txt"
+echo "Share this file when asking for help!"
+```
+
+**Where to Get Help:**
+- 💬 **Discord**: [#sorosim-cli channel](https://discord.gg/stellar)
+- 🐛 **GitHub Issues**: [Report bugs with debug info](https://github.com/sorosim/sorosim-cli/issues)
+- 📖 **Documentation**: [Browse troubleshooting guides](/docs/guides/ci-integration)
+- 📧 **Email**: support@sorosim.dev (include debug-info.txt)
+
+---
+
 ## Related Documentation
 
 - **[CLI Quickstart](/docs/quickstart/cli)** — Getting started guide
